@@ -1,11 +1,11 @@
 import json
 from typing import Any, Literal, Set, Union, List, Dict, Optional, Tuple
 
-import fslab_models as models
-from fslab_models import KmemCache, Slab, Obj
-from fslab_messages import SlabMsg, SlabCreateMsg, SlabAllocMsg, SlabFreeMsg, SlabPrintMsg
-from fslab_parser import SlabMatcher
-from fslab_utils import is_in_same_page
+from . import fslab_data_models as models
+from .fslab_data_models import KmemCache, Slab, Obj
+from .fslab_messages import SlabMsg, SlabCreateMsg, SlabAllocMsg, SlabFreeMsg, SlabPrintMsg
+from .fslab_parser import SlabMatcher
+from .fslab_utils import is_in_same_page
 
 def run_msg(caches: Dict[str, KmemCache], slab_msg: SlabMsg, verbose = False):
     """Execute the given slab debug message and update caches accordingly."""

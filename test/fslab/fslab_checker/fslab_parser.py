@@ -3,11 +3,11 @@ import re
 import parse
 from typing import Any, Literal, Set, Union, List, Dict, Optional, Tuple
 
-import fslab_data_models as models
-from fslab_messages import (
+from . import fslab_data_models as models
+from .fslab_utils import normalize_spaces, parse_dict, check_exists
+from .fslab_messages import (
     MyMsg, SlabCreateMsg, SlabAllocMsg, SlabFreeMsg, SlabPrintMsg, FileMsg
 )
-from fslab_utils import normalize_spaces, parse_dict, check_exists
 
 # Slab matcher with pattern definitions
 class Matcher(abc.ABC):
@@ -36,17 +36,74 @@ class SlabMatcher(Matcher):
         models.SlabPrinfEndData: "print_kmem_cache end",
     }
 
+    # --- Compatibility Groups Definition ---
+    ALLOC_GROUP = {
+        models.SlabAllocRequestData, 
+        models.SlabAllocSlabData, 
+        models.SlabAllocObjData
+    }
+    FREE_GROUP = {
+        models.SlabFreeObjData, 
+        models.SlabFreeSlabData
+    }
+    PRINT_GROUP = {
+        models.SlabPrintfKmemStatusData, 
+        models.SlabPrintfSlabListStatusData,
+        models.SlabPrintfSlabStatusData, 
+        models.SlabPrintfObjStatusData,
+        models.SlabPrinfEndData,
+    }
+    # Types that explicitly signal the start of a new independent command sequence
+    START_TYPES = {
+        models.SlabCreateData,           # Atomic, but should clear any previous junk
+        models.SlabAllocRequestData,     # Starts Alloc sequence
+        models.SlabFreeObjData,          # Starts Free sequence
+        models.SlabPrintfKmemStatusData  # Starts Print sequence
+    }
+
+    def _check_compatibility(self, new_type: type) -> bool:
+        """
+        Check if the new message type is compatible with the current sequence in datalist.
+        Returns False if the new message implies a state reset (start of new sequence).
+        """
+        if not self.datalist:
+            return True
+        
+        # Rule 1: If new type is a "Start" type, it forcefully interrupts any existing sequence.
+        # e.g. [AllocReq] -> [AllocReq] (Reset), [FreeObj] -> [AllocReq] (Reset)
+        if new_type in self.START_TYPES:
+            return False
+
+        current_head_type = type(self.datalist[0])
+
+        # Rule 2: Check if both belong to the same functional group
+        def get_group_id(t):
+            if t in self.ALLOC_GROUP: return 1
+            if t in self.FREE_GROUP: return 2
+            if t in self.PRINT_GROUP: return 3
+            return 0 # Unknown/Other
+        
+        # If groups differ (e.g. Alloc vs Free), they are incompatible
+        return get_group_id(current_head_type) == get_group_id(new_type)
+
     def match(self, line: str) -> Optional["MyMsg"]:
         line = normalize_spaces(line.strip())
         for msg_type, pattern in self.PATTERNS.items():
             match = parse.parse(pattern, line)
             if match:
+                # --- [Logic Fix] State Pollution Prevention ---
+                if not self._check_compatibility(msg_type):
+                    # Incompatible sequence detected (e.g. interrupted alloc), clear old state
+                    self.datalist = []
+                # ----------------------------------------------
+
                 if msg_type in (models.SlabCreateData, models.SlabAllocObjData, models.SlabFreeSlabData):
                     self.datalist.append(msg_type(origin=line, **match.named))
                     if msg_type == models.SlabCreateData:
                         return self.encapsulate(SlabCreateMsg)
                     elif msg_type == models.SlabAllocObjData:
                         return self.encapsulate(SlabAllocMsg)
+                    # Dead code here
                     elif msg_type == models.SlabFreeSlabData and parse.parse("End of free", line):
                         return self.encapsulate(SlabFreeMsg)
                 elif msg_type == models.SlabPrintfSlabStatusData:
@@ -77,6 +134,8 @@ class SlabMatcher(Matcher):
                 else:
                     self.datalist.append(msg_type(origin=line, **match.named))
                 break
+        
+        # Check for End of free command (not in PATTERNS dict)
         if parse.parse("End of free", line) and any(isinstance(d, models.SlabFreeObjData) for d in self.datalist):
             return self.encapsulate(SlabFreeMsg)
         return None

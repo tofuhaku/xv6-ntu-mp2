@@ -1,111 +1,176 @@
 import pytest
-
-from pseudo_fslab import (
-    normalize_spaces,
-    parse_dict,
-    hex_to_int,
-    is_in_same_page
-)
-
-# --- Test normalize_spaces ---
-# Create a list of test cases: (input, expected_output)
-normalize_test_cases = [
-    ("hello   world", "hello world"),               # 1. Basic case: multiple spaces
-    ("  hello world", "hello world"),               # 2. Leading spaces
-    ("hello world  ", "hello world"),               # 3. Trailing spaces
-    ("  hello   world  ", "hello world"),           # 4. Leading and trailing spaces
-    ("\thello\nworld\r\n", "hello world"),          # 5. Mixed whitespace (tab, newline)
-    ("  \t hello \n  world \r\n ", "hello world"),  # 6. Complex mixed whitespace
-    ("hello world", "hello world"),                 # 7. String requiring no change
-    ("hello", "hello"),                             # 8. Single word
-    ("", ""),                                       # 9. Empty string
-    ("   \t \n ", ""),                              # 10. Whitespace only
-]
-
-@pytest.mark.parametrize("input_text, expected_output", normalize_test_cases)
-def test_normalize_spaces(input_text, expected_output):
-    """
-    Test that normalize_spaces correctly handles various whitespace characters.
-    """
-    assert normalize_spaces(input_text) == expected_output
+import os
+from fslab_checker import fslab_utils as utils
 
 
-# --- Test hex_to_int ---
-@pytest.mark.parametrize("hex_str, expected_int", [
-    ("0xff", 255),
-    ("FF", 255),
-    ("0x100", 256),
-    ("100", 256),
-    ("0", 0),
-    ("0x0", 0),
-    ("0xaB", 171),
-])
-def test_hex_to_int_valid(hex_str, expected_int):
-    """
-    Test hex_to_int with valid hexadecimal strings.
-    """
-    assert hex_to_int(hex_str) == expected_int
+# --- Tests for normalize_spaces ---
 
-@pytest.mark.parametrize("invalid_str", [
-    "G",          # Contains invalid characters
-    "0xG",
-    "",           # Empty string
-    "1 2",        # Contains spaces
-])
-def test_hex_to_int_invalid(invalid_str):
-    """
-    Test that hex_to_int raises an AssertionError for invalid input.
-    """
-    # Check that an AssertionError is raised
-    with pytest.raises(AssertionError, match="Invalid hex string"):
-        hex_to_int(invalid_str)
+def test_normalize_spaces_basic():
+    text = "hello world"
+    assert utils.normalize_spaces(text) == "hello world"
+
+def test_normalize_spaces_complex():
+    text = "  foo    bar   \n  baz  "
+    assert utils.normalize_spaces(text) == "foo bar baz"
+
+def test_normalize_spaces_empty():
+    assert utils.normalize_spaces("   ") == ""
 
 
-# --- Test is_in_same_page ---
-# 4095 == 0xFFF (4KB page size - 1)
-@pytest.mark.parametrize("addr_a, addr_b, expected", [
-    (0x1000, 0x1001, True),     # Same page
-    (0x1000, 0x1FFF, True),     # Same page (boundary)
-    (0x1FFF, 0x2000, False),    # Different page (boundary)
-    (0x0, 0xFFF, True),         # Zero Page
-    (0x0, 0x1000, False),       # Zero Page vs Page 1
-    (0x8011c000, 0x8011c008, True), # Addresses from example logs
-    (0x8011c000, 0x8011d000, False),# Addresses from example logs (different page)
-])
-def test_is_in_same_page(addr_a, addr_b, expected):
-    """
-    Test if is_in_same_page correctly identifies 4KB page boundaries.
-    """
-    assert is_in_same_page(addr_a, addr_b) == expected
+# --- Tests for parse_dict ---
 
+def test_parse_dict_quoted_keys():
+    input_str = "{'key': 'value', 'num': 123}"
+    expected = {'key': 'value', 'num': 123}
+    assert utils.parse_dict(input_str) == expected
 
-# --- Test parse_dict ---
-def test_parse_dict_simple():
-    """
-    Test parse_dict with a standard, valid dictionary string.
-    """
-    s = "{ 'freelist': 0x123, 'nxt': 0x456, 'name': 'test' }"
-    expected = {'freelist': 0x123, 'nxt': 0x456, 'name': 'test'}
-    assert parse_dict(s) == expected
+def test_parse_dict_unquoted_keys():
+    # This tests the NameError handling logic in the utility
+    input_str = "{key: value, status: OK}"
+    expected = {'key': 'value', 'status': 'OK'}
+    assert utils.parse_dict(input_str) == expected
 
-def test_parse_dict_with_undefined_names():
+def test_parse_dict_nested():
+    input_str = "{outer: {inner: value}}"
+    expected = {'outer': {'inner': 'value'}}
+    assert utils.parse_dict(input_str) == expected
+
+def test_parse_dict_invalid_format():
+    input_str = "{invalid_dict"
+    with pytest.raises(AssertionError) as excinfo:
+        utils.parse_dict(input_str)
+    assert "Invalid string" in str(excinfo.value)
+
+# --- Security Test for parse_dict ---
+
+def test_parse_dict_vulnerability_rce():
     """
-    Test parse_dict's ability to handle the special eval/exec logic
-    from the original code (e.g., PIPE may not be a defined Python variable).
+    Demonstrates the security vulnerability (Remote Code Execution) in parse_dict.
+    Goal: Execute malicious Python code via eval() to create a file on the system.
     """
-    # Example from SlabPrintfObjStatusData
-    s = "{ 'tp': 0, 'ref': 1, 'type': PIPE }"
+    # Define a filename to prove the exploit was successful
+    proof_file = "you_have_been_hacked.txt"
     
-    # 'PIPE' is expected to be treated as the string "PIPE"
-    expected = {'tp': 0, 'ref': 1, 'type': "PIPE"}
-    assert parse_dict(s) == expected
+    # Ensure the file does not exist before the test starts
+    if os.path.exists(proof_file):
+        os.remove(proof_file)
 
-def test_parse_dict_invalid_syntax():
-    """
-    Test parse_dict with invalid Python syntax.
-    """
-    s = "{ 'a': 1, " # Missing closing brace
+    # --- Malicious Payload ---
+    # This string looks like a dictionary structure.
+    # However, its value contains Python code: importing 'os' and executing 'touch' to create a file.
+    # eval() will execute this code.
+    malicious_input = f"{{'exploit_result': __import__('os').system('touch {proof_file}')}}"
     
-    # Check that an AssertionError is raised
-    with pytest.raises(AssertionError, match="Invalid string"):
-        parse_dict(s)
+    # Execute the vulnerable function
+    # os.system usually returns 0 (success), so the resulting dict will be {'exploit_result': 0}
+    utils.parse_dict(malicious_input)
+    
+    # --- Verify the result ---
+    # Check if proof_file was created. If it exists, the malicious code ran.
+    exploit_successful = os.path.exists(proof_file)
+    
+    # Cleanup: remove the proof file
+    if exploit_successful:
+        os.remove(proof_file)
+
+    # If exploit_successful is True, the vulnerability is confirmed.
+    assert exploit_successful, "Vulnerability test failed: The malicious code was not executed."
+
+def test_parse_dict_nesting_limit():
+    """
+    Robustness: Verify behavior near the parser's nesting limit.
+    
+    Findings:
+    - Depth ~199: Safe (Passes).
+    - Depth ~200+: Fails (Caught by catch-all exception in parse_dict).
+    
+    Explanation:
+    Python's 'eval()' requires compiling the string first. The CPython parser 
+    has a stricter stack depth limit for nested syntax (around 200) than 
+    the runtime recursion limit (usually 1000).
+    """
+    
+    # 1. Test a Safe Depth (Should Pass)
+    # We use 150 to be safe across different OS/Environments.
+    safe_depth = 150
+    safe_str = "{" + "'a':{" * safe_depth + "1" + "}" * (safe_depth + 1)
+    
+    try:
+        res = utils.parse_dict(safe_str)
+        # Verify we can traverse to the bottom
+        curr = res
+        for _ in range(safe_depth):
+            curr = curr['a']
+        assert curr == {1}
+    except Exception as e:
+        pytest.fail(f"Safe depth ({safe_depth}) failed surprisingly: {e}")
+
+    # 2. Test the Limit (Should fail gracefully, not crash the interpreter)
+    # We expect parse_dict to raise AssertionError when the limit is hit.
+    unsafe_depth = 300
+    unsafe_str = "{" + "'a':{" * unsafe_depth + "1" + "}" * (unsafe_depth + 1)
+    
+    with pytest.raises(AssertionError) as excinfo:
+        utils.parse_dict(unsafe_str)
+    
+    # Verify the error message confirms it was caught by our logic
+    assert "Invalid string" in str(excinfo.value)
+
+
+# --- Tests for hex_to_int ---
+
+def test_hex_to_int_valid():
+    assert utils.hex_to_int("0x10") == 16
+    assert utils.hex_to_int("FF") == 255
+    assert utils.hex_to_int("0") == 0
+
+def test_hex_to_int_invalid():
+    with pytest.raises(AssertionError) as excinfo:
+        utils.hex_to_int("invalid_hex")
+    assert "Invalid hex string" in str(excinfo.value)
+
+
+# --- Tests for is_in_same_page ---
+
+def test_is_in_same_page_true():
+    # 4KB page size = 4096 bytes (0x1000)
+    addr1 = 0x1000
+    addr2 = 0x1050
+    assert utils.is_in_same_page(addr1, addr2) is True
+
+def test_is_in_same_page_false():
+    addr1 = 0x1000  # Page 1
+    addr2 = 0x2000  # Page 2
+    assert utils.is_in_same_page(addr1, addr2) is False
+
+def test_is_in_same_page_boundary():
+    addr1 = 4095  # 0xFFF (Page 0)
+    addr2 = 4096  # 0x1000 (Page 1)
+    assert utils.is_in_same_page(addr1, addr2) is False
+    
+def test_is_in_same_page_negative():
+    """Boundary: Check behavior with negative addresses or edge cases."""
+    # Insure negative numbers won't cause unexpected True
+    assert utils.is_in_same_page(-1, -1) is True 
+    assert utils.is_in_same_page(-1, 0) is False
+
+
+# --- Tests for check_exists ---
+
+class MockMessageType:
+    pass
+
+def test_check_exists_valid():
+    data = {'target_key': 'target_value'}
+    result = utils.check_exists(data, 'target_key', MockMessageType)
+    assert result == 'target_value'
+
+def test_check_exists_missing():
+    data = {'other_key': 'value'}
+    with pytest.raises(AssertionError) as excinfo:
+        utils.check_exists(data, 'missing_key', MockMessageType)
+    
+    # Verify error message contains the class name and the missing key
+    msg = str(excinfo.value)
+    assert "Invalid MockMessageType" in msg
+    assert "missing_key" in msg

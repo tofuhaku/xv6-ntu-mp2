@@ -1,5 +1,6 @@
 import re
-from typing import Any
+from typing import Any, Dict
+
 
 def normalize_spaces(text):
     """Normalize multiple spaces to a single space and strip leading/trailing whitespace."""
@@ -20,7 +21,7 @@ def parse_dict(s: str) -> dict['str', Any]:
         except Exception as e:
             raise AssertionError(f"Invalid string: {s}: is not in good {{ ... }} format")
     return d
-
+    
 def hex_to_int(value: str) -> int:
     """Convert a hexadecimal string to an integer."""
     try:

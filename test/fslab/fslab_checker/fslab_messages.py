@@ -2,11 +2,11 @@ import abc
 from enum import Enum
 from typing import Union
 
-from fslab_models import (
+from .fslab_utils import is_in_same_page
+from .fslab_data_models import (
     SlabCreateData, SlabAllocRequestData, SlabAllocObjData,
     SlabFreeObjData, SlabFreeSlabData
 )
-from fslab_utils import is_in_same_page
 
 # Command base class
 class MyMsg(abc.ABC):

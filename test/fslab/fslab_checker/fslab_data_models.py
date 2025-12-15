@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, Set, Union, List, Dict, Optional, Tuple
 
-from slab_utils import hex_to_int, is_in_same_page
+from .fslab_utils import hex_to_int, is_in_same_page
 
 @dataclass
 class BaseData:
@@ -111,13 +111,15 @@ class ListCheckData(BaseData):
     _add: int
     _del: int
     def __post_init__(self):
-        super().__post_init__()
+        # BaseData has no definition for __post_init__
+        # super().__post_init__()
         if isinstance(self.init, str):
             self.init = int(self.init)
         if isinstance(self._add, str):
             self._add = int(self._add)
         if isinstance(self._del, str):
             self._del = int(self._del)
+
 
 # --- Simulator State Models ---
 

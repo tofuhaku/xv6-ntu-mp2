@@ -1,5 +1,5 @@
 import sys
-from fslab_interpreter import interpreter
+from fslab_checker import interpreter 
 
 if __name__ == '__main__':
     output = []
@@ -17,7 +17,7 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"Error reading file: {e}", file=sys.stderr)
         sys.exit(1)
-
+    
     # You can set verbose to True here if needed for debugging
     # e.g., interpreter(output, True)
     try:
@@ -28,5 +28,5 @@ if __name__ == '__main__':
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"\nAn unexpected error occurred: {e}", file=sys.stderr)
+        print(f"An unexpected error occurred: {e}", file=sys.stderr)
         sys.exit(1)
