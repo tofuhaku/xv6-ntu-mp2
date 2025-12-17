@@ -3,7 +3,7 @@ import re
 import parse
 from typing import Any, Literal, Set, Union, List, Dict, Optional, Tuple
 
-from . import fslab_data_models_v2 as models
+from fslab_checker import fslab_data_models_v2 as models
 from .fslab_utils_v2 import normalize_spaces, parse_dict_safe, check_exists
 from .fslab_messages_v2 import (
     MyMsg, SlabCreateMsg, SlabAllocMsg, SlabFreeMsg, SlabPrintMsg, FileMsg
@@ -15,7 +15,7 @@ def parse_log_dict(s: str) -> Dict[str, Any]:
     Preprocess C-style struct string to valid Python dict string for ast.literal_eval.
     1. Quote unquoted keys  : key: -> "key":
     2. Quote hex values:    : 0x123 -> : "0x123"
-    3. Quote string values: : "full" -> : "full"
+    3. Quote string values: : full -> : "full"
     """
     # 1. Quote keys (alphanumeric starting with letter/underscore)
     # Lookbehind assertions (?<=...) make sure we don't quote already quoted keys
@@ -129,8 +129,8 @@ class SlabMatcher(Matcher):
                     elif msg_type == models.SlabAllocObjData:
                         return self.encapsulate(SlabAllocMsg)
                     # Dead code here
-                    elif msg_type == models.SlabFreeSlabData and parse.parse("End of free", line):
-                        return self.encapsulate(SlabFreeMsg)
+                    # elif msg_type == models.SlabFreeSlabData and parse.parse("End of free", line):
+                    #     return self.encapsulate(SlabFreeMsg)
                         
                 elif msg_type == models.SlabPrintfSlabStatusData:
                     kv_pair = check_exists(match.named, 'kv_pair', msg_type)

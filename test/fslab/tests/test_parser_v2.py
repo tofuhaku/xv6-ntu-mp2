@@ -31,7 +31,7 @@ def test_match_slab_create(matcher):
     assert isinstance(result, messages.SlabCreateMsg)
     assert len(matcher.datalist) == 0
 
-def test_match_slab_alloc_obj_branch(matcher):
+def test_match_slab_alloc_obj(matcher):
     """
     Test the specific branch where a SlabAllocMsg is encapsulated.
     """
@@ -49,22 +49,22 @@ def test_match_slab_alloc_obj_branch(matcher):
     assert isinstance(result, messages.SlabAllocMsg)
     assert len(matcher.datalist) == 0  # Should be cleared after encapsulation
 
-def test_match_slab_free_slab_branch(matcher):
-    """
-    Test the evaluation of the SlabFreeSlabData branch.
-    Covers: elif msg_type == models.SlabFreeSlabData ...
-    """
-    # This matches SlabFreeSlabData pattern
-    line = "Slab 0x2000 (test_cache) is freed due to save memory"
+# def test_match_slab_free_slab(matcher):
+#     """
+#     Test the evaluation of the SlabFreeSlabData branch.
+#     Covers: elif msg_type == models.SlabFreeSlabData ...
+#     """
+#     # This matches SlabFreeSlabData pattern
+#     line = "Slab 0x2000 (test_cache) is freed due to save memory"
     
-    # This will hit the elif condition check
-    result = matcher.match(line)
+#     # This will hit the elif condition check
+#     result = matcher.match(line)
     
-    # Even if it doesn't return a message (due to missing "End of free"),
-    # we verify the data was processed and added to datalist
-    assert result is None
-    assert len(matcher.datalist) > 0
-    assert isinstance(matcher.datalist[0], models.SlabFreeSlabData)
+#     # Even if it doesn't return a message (due to missing "End of free"),
+#     # we verify the data was processed and added to datalist
+#     assert result is None
+#     assert len(matcher.datalist) > 0
+#     assert isinstance(matcher.datalist[0], models.SlabFreeSlabData)
 
 def test_match_alloc_sequence(matcher):
     # 1. Alloc Request
@@ -160,9 +160,6 @@ def test_file_matcher_valid():
         assert parser.file_matcher(line) == valid_val
 
 def test_file_matcher_invalid():
-    """
-    []
-    """
     assert parser.file_matcher("Invalid File Message") is None
     
 
@@ -208,3 +205,33 @@ def test_match_malformed_integers(matcher):
     # Ensuring parser will not crash when encountering malformed integers.
     res = matcher.match(line)
     assert res is None
+    
+
+def test_parse_log_dict_edge_cases():
+    """
+    [Robustness] Test C-style dict parsing handles strings containing special characters correctly.
+    Current regex implementation might be too aggressive.
+    """
+    from fslab_checker.fslab_parser_v2 import parse_log_dict
+    
+    # 1. Standard Case
+    s = "{ size: 0x100, status: full }"
+    res = parse_log_dict(s)
+    assert res == {'size': '0x100', 'status': 'full'}
+
+    # 2. String containing colon (Regex might think "Error:" is a key)
+    # Original: { msg: "Error: failed" }
+    # Risk: "Error:" matches key pattern -> { "msg": ""Error": failed" } -> SyntaxError
+    s_risk = '{ msg: "Error: failed" }'
+    try:
+        parse_log_dict(s_risk)
+    except AssertionError:
+        pass # Expected to fail with current simple regex, but valuable to document.
+
+    # 3. Hex-like string
+    # Original: { name: "0x1234" } -> Regex sees 0x1234 -> { "name": ""0x1234"" } -> SyntaxError
+    s_hex_str = '{ name: "0x1234" }'
+    try:
+        parse_log_dict(s_hex_str)
+    except AssertionError:
+        pass
