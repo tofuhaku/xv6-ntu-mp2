@@ -34,8 +34,14 @@ test/build
 test/private
 tmp
 
+test/run_mp2.py
 # testing
 /xv6_venv
-/fslab
+test/fslab/tests/test_command.md
 .pytest_cache
 .coverage
+
+# v2
+test/fslab/tests/test_interpreter.py
+test/fslab/tests/test_fuzz.py
+test/fslab/tests/test_state_machine.py
